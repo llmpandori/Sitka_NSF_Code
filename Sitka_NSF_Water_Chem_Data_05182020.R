@@ -3,7 +3,7 @@
 # Purpose: Assemble TA, nutrient, and pH data for Sitka NSF seasonal & experimental data
 # Created by: L Pandori
 # Created: 05/18/2020
-# Last edited: 05/18/2020
+# Last edited: 05/20/2020
 ################################################################
 ##### Package upload #####
 
@@ -52,7 +52,7 @@ ta <- read_csv('SitkaTidepoolTA_EOB.csv')
     # make single column for notes (fix NAs later if needed)
     mutate(TA_Notes = paste(Sample_notes, Series_notes, sep = ','))
   
-##### Merge TA & Master Data #####
+##### Merge TA & master data #####
   # left join to keep all master columns & add matches from ta
   master <- left_join(master, 
                       # keep all columns from master, add ta
@@ -108,7 +108,7 @@ nutrients<-read_csv("Data_WaterChemistry_NSF_Sitka_05182020.csv", # set column t
     select(-c(Sample_ID, NN_Notes, 
               Phosphate_Notes, Ammonium_Notes, Season))
 
-##### Merge Nutrient & Master Data #####
+##### Merge nutrient & master data #####
   
   # merge datasets by key columns
   master <- left_join(master, 
@@ -133,5 +133,123 @@ nutrients<-read_csv("Data_WaterChemistry_NSF_Sitka_05182020.csv", # set column t
 # detach nutrient data
   remove(nutrients)
 
-##### 
+##### Hanna pH calculation #####
+# Source: Rph calculations.R created by N. Silbiger - in NSF Sitka Google Drive Folder
+
+  # Load calibration data
+  calib <- read_csv("Hannah_TRIS_Calibration_05202020.csv", 
+           col_types = cols(
+             Date = col_date(format = "%m/%d/%Y")))
+  
+ 
+  calib <- calib %>% 
+            # order by date
+            arrange(Date) %>%
+            # change column names to match N. Silbiger code
+            mutate(TTris = Tris_Temp, 
+                   mVTris = Tris_mV)
+  
+  # get list of calibration dates
+  dates <- unique(calib$Date)
+  
+# Make output tibble 
+  Hanna_pH_df <- tibble()
+  
+  # loop calibration code
+for (i in 1:length(dates)){
+# subset relevant data
+  # calibration date
+  calib_date <- filter(calib, Date == dates[i])
+  
+  # field data 
+  
+  # if not final date
+  if(dates[i+1] <= length(dates)) {
+    # get field dates b/w calibration [i] and next [i+1]
+    field_date <- filter(master, 
+                  Date >= dates[i] & Date < dates[i+1])
+  } else {
+    # otherwise, get field dates + 5 from calibration
+    field_date <- filter(master, 
+                  Date >= dates[i] & Date < (dates[i] + 5))
+  }
+  
+  # create linear regression + store p-value and r2 value
+  mVTris_t<-lm(mVTris~TTris, data = calib_date)
+  adjR2 = round(summary(mVTris_t)$adj.r.squared,digits = 2)
+  pvalue = round(summary(mVTris_t)$coefficients[2,4], digits = 5)
+  
+  # plot regression w/ p-value and r2 and save
+  ggplot(data = calib_date,
+         mapping = aes(x = TTris, y = mVTris)) + 
+    geom_point() + 
+    geom_smooth(method = 'lm') +
+    xlab('Tris Temperature (°C)') + 
+    ylab('Hanna Reading (mV)') +
+    ggtitle(paste('Calibration', dates[i])) + 
+    geom_text(mapping = aes(x = min(TTris), y = max(mVTris), label = paste("R2 =",adjR2, ' P =', pvalue)), hjust = 0) + 
+    theme_bw() 
+    
+  # save plot for later inspection
+  filename = toString(paste('Calibration_Plot_',dates[i],'.png',sep = ''))
+  ggsave(filename, width = 4, height = 4)
+  
+  # Make input file names match
+  field_date <- field_date %>%
+    mutate(Tin = Temp, 
+           mV = Hanna_pH)
+
+# Field Hanna pH calculation from mV (from N. Silbiger)
+  
+  # constants
+  R <- 8.31451 # gas constant
+  Far <- 96485.309 # Faraday constant
+  
+  # calculate the pH of the tris (Dickson A. G., Sabine C. L. and Christian J. R., SOP 6a)
+  mvTris <- field_date$Tin * mVTris_t$coefficients[2] + 
+            mVTris_t$coefficients[1]
+  
+  # Tris salinity (add column in calib datasheet)
+  STris<-34.5
+  
+  # Calculate pH of Tris acros Temps
+  phTris<- (11911.08-18.2499 * STris - 0.039336 * STris^2) * 
+    (1/(field_date$Tin+273.15)) - 366.27059 + 0.53993607*
+     STris + 0.00016329 * STris^2 +
+    (64.52243-0.084041 * STris) * 
+    log(field_date$Tin + 273.15) - 0.11149858 * 
+    (field_date$Tin + 273.15)
+  
+  # calculate pH error
+  # linear model of temp x Tris pH
+  Tris<-lm(phTris~field_date$Tin) 
+  # calculate pH @ 25*C
+  TrisCalc<-25 * Tris$coefficients[2] + Tris$coefficients[1] 
+  # % error of probe measurement
+  field_date$pH_Error<-((TrisCalc - 8.0835)/8.0835) * 100 
+  
+  
+  # Calculate the pH of your samples
+  field_date$Hanna_pH_calculated <- phTris + 
+    (mvTris/1000 - field_date$mV/1000) / 
+    (R * (field_date$Tin + 273.15) * log(10)/Far)
+
+# Select columns of interest and add to intermediate tibble
+  # (to be merged with master)
+  field_date <- select(field_date, SampleID,pH_Error, Hanna_pH_calculated)
+
+  # merge with intermediate tibble
+  Hanna_pH_df <- rbind(Hanna_pH_df, field_date)
+}
+  
+##### Merge hanna pH & master data #####
+  
+  # join by sample ID, keeping all columns in master
+  master <- left_join(master, Hanna_pH_df, by = 'SampleID')
+  
+##### Clean up environment #####
+remove(calib, calib_date, field_date, Hanna_pH_df, mVTris_t, Tris, adjR2, dates, Far, filename, i, mvTris, phTris, pvalue, R, STris, TrisCalc)
+
+##### Spec pH data upload & tidy #####
+  
   
