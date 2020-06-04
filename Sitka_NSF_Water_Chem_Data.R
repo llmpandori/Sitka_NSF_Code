@@ -601,6 +601,8 @@ master1 <- master %>%
   # select columns from master excel sheet
   select("SampleID", "Date", "Time_point", "Pool", 'Time_water_collected', "Temp", 'Hanna_pH', 'Salinity', 'DO', 'Light', 'Field_Notes', 'blank1', 'Hannah_pH_Total_Scale', 'blank2', 'Spec_pH_abs', 'Spec_pH_mV', 'Spec_pH_Total_Scale', 'Spec_pH_Notes', 'blank3', 'TA', 'TA_Corrected', 'TA_Notes', 'blank4', 'Corrected_NN', 'Corrected_Nitrite', 'Corrected_Nitrate', 'Phosphate', 'Ammonium', 'Nutrients_Notes') 
 
+write_csv(master1, 'waterchem_data_complete_06042020.csv')
+
 # make own master to work with (extra columsn for day/night and on/off etc.)
 master2 <- master %>%
   # make ph columns match master columns
