@@ -164,14 +164,14 @@ for (i in 1:length(dates)){
   # field data 
   
   # if not final date
-  if(dates[i+1] <= length(dates)) {
+  if((i+1) <= length(dates)) {
     # get field dates b/w calibration [i] and next [i+1]
     field_date <- filter(master, 
                   Date >= dates[i] & Date < dates[i+1])
   } else {
-    # otherwise, get field dates + 5 from calibration
+    # if last date, run all following dates
     field_date <- filter(master, 
-                  Date >= dates[i] & Date < (dates[i] + 5))
+                  Date >= dates[i])
   }
   
   # create linear regression + store p-value and r2 value
@@ -247,9 +247,29 @@ for (i in 1:length(dates)){
   # join by sample ID, keeping all columns in master
   master <- left_join(master, Hanna_pH_df, by = 'SampleID')
   
+  # save CSV for CS (5/21/2020)
+  write_csv(master, 'master_asof_05212020.csv')
+  
 ##### Clean up environment #####
 remove(calib, calib_date, field_date, Hanna_pH_df, mVTris_t, Tris, adjR2, dates, Far, filename, i, mvTris, phTris, pvalue, R, STris, TrisCalc)
 
 ##### Spec pH data upload & tidy #####
   
+# load data (files correspond to batches of cresol)
   
+  
+  # tidy specific column names
+  sept2019_spec <- 
+
+# rbind (once more files - must have same column names)
+  
+  spec <- sept2019_spec
+  
+# tidy 
+  
+  spec2 <- spec %>%
+    select('Pool', 'Time_point', 'Day_night', 'Pool', 
+           'Replicate', 'Temp', 'Sampling', 'ND_WL730', 
+           'ND_WL578', 'ND_WL434', 'D_WL730', 'D_WL578',
+           'D_WL434')
+           
