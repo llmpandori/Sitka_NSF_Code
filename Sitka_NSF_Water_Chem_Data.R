@@ -50,9 +50,19 @@ ta <- read_csv('SitkaTidepoolTA_EOB.csv')
            Series_notes = `Series Notes`,
            TA_Corrected = CorrectedTA) %>%
     # make single column for notes (fix NAs later if needed)
-    mutate(TA_Notes = paste(Sample_notes, Series_notes, sep = ','))
-  
+    mutate(TA_Notes = paste(
+              ifelse(is.na(Sample_notes), '', Sample_notes),
+              ifelse(is.na(Series_notes), '', Series_notes))) %>%
+    # fix ocean a's and b's (make ocean1 and ocean2)
+    mutate(Pool = ifelse(Pool == 'oceanA', 'ocean1',
+                  ifelse(Pool == 'oceanB', 'ocean2',
+                  ifelse(Pool == 'Ocean1', 'ocean1',
+                  ifelse(Pool == 'Ocean2', 'ocean2', 
+                  ifelse(Pool == 'Ocean3', 'ocean3', Pool))))))
+    
 ##### Merge TA & master data #####
+  # make master ocean column match (no caps)
+  master <- mutate(master, Pool = ifelse(Pool == 'Ocean', 'ocean',Pool))
   # left join to keep all master columns & add matches from ta
   master <- left_join(master, 
                       # keep all columns from master, add ta
@@ -103,8 +113,11 @@ nutrients<-read_csv("Data_WaterChemistry_NSF_Sitka_05182020.csv", # set column t
              # if Nitrite is -, use 0, if not, use listed value
              ifelse(Nitrite_LaChat >= 0, Nitrite_LaChat, 0)) %>%
     # put all notes in one column (comma separated)
-    mutate(Nutrients_Notes = paste(NN_Notes, Phosphate_Notes,
-                            Ammonium_Notes, sep = ', ' )) %>%
+    mutate(Nutrients_Notes = paste(
+      ifelse(is.na(NN_Notes),'', NN_Notes),
+      ifelse(is.na(Phosphate_Notes), '', Phosphate_Notes),
+      ifelse(is.na(Ammonium_Notes), '', Ammonium_Notes), 
+      sep = "")) %>%
     select(-c(Sample_ID, NN_Notes, 
               Phosphate_Notes, Ammonium_Notes, Season))
 
@@ -560,6 +573,8 @@ write_csv(qc, 'qc_phdata_check.csv')
 # summary data to merge with master (avg ph across acceptable replicates)
 qc1 <- qc %>%
   group_by(key) %>%
+  # get acceptable replicates
+  filter(goodbad == 'good') %>%
   summarize(avg_pH_corr = mean(pH_corr))
 
 # make // key column in master
@@ -637,6 +652,89 @@ not_conservative_goodsamples <- master2 %>%
 
 # export as csv
 write_csv(not_conservative_goodsamples, 'NOT_conservative_bottles_OK_empty_06042020.csv')
+
+##### Plots for pH QC #####
+# make pool an ordered factor
+master2$Pool <- ordered(master2$Pool, levels = c(
+  '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23', '24', '25', '26', '27', '28', '29', '30', '31', '32', '33', '34', '35', '36', 'ocean', 'ocean1', 'ocean2'))
+
+# start with January 2019
+
+jan19 <- master2 %>%
+  filter(Month == 'January' & Year == '2019') %>%
+  select('key', 'Month', 'Year', 'On_Off', 'Time_point', 'Pool',
+         'Day_night', 'Spec_pH_Total_Scale', 'Spec_pH_Notes') %>%
+  # make pools all #'s (ocean = pool 37, ocean1 = 38, ocean2 =39)
+  mutate(Pool2 = ifelse(Pool %in% c(1:36), Pool,
+                 ifelse(Pool == 'ocean1', 38,
+                 ifelse(Pool == 'ocean2', 39,
+                 ifelse(Pool == 'ocean', 37, NA))))) %>%
+  # add column to wrap by (limit to 5-7 pools/plot)
+  mutate(poolgroup = ifelse(Pool %in% c(1:5), 'Pools 1-5',
+                     ifelse(Pool %in% c(6:10), 'Pools 6-10',
+                     ifelse(Pool %in% c(11:15), 'Pools 11-15',
+                     ifelse(Pool %in% c(16:20), 'Pools 16-20',
+                     ifelse(Pool %in% c(21:25), 'Pools 21-25',
+                     ifelse(Pool %in% c(26:30), 'Pools 26-30',
+                     ifelse(Pool %in% c(31:36, 'ocean', 'ocean1', 'ocean2'), 'Pools 31-36 & Ocean', 
+                            NA)))))))) %>%
+  filter(!is.na(poolgroup))
+
+
+
+ggplot(data = jan19, 
+       mapping = aes(x = as_factor(Time_point), 
+                     y = Spec_pH_Total_Scale, group = Pool)) + 
+  geom_point(mapping = aes(color = Pool)) + 
+  geom_line (mapping = aes(color = Pool)) +
+  facet_wrap(~Day_night) + 
+  xlab('Time Point') + 
+  ylab('Spec pH') +
+  ggtitle('January 2019 Sampling') + 
+  theme_bw() +
+  theme(legend.position = 'bottom') +
+guides(fill=guide_legend(nrow=2, byrow=TRUE))
+
+  ggsave('Jan19_DayNight_pH.png', width = 6, height = 6, unit = 'in')
+  
+
+spring19 <- master2 %>%
+  filter(Month == 'March' & Year == '2019') %>%
+  select('key', 'Month', 'Year', 'On_Off', 'Time_point', 'Pool',
+         'Day_night', 'Spec_pH_Total_Scale', 'Spec_pH_Notes') %>%
+  # make pools all #'s (ocean = pool 37, ocean1 = 38, ocean2 =39)
+  mutate(Pool2 = ifelse(Pool %in% c(1:36), Pool,
+                ifelse(Pool == 'ocean1', 38,
+                ifelse(Pool == 'ocean2', 39,
+                ifelse(Pool == 'ocean', 37, NA))))) %>%
+  # add column to wrap by (limit to 5-7 pools/plot)
+  mutate(poolgroup = ifelse(Pool %in% c(1:5), 'Pools 1-5',
+                    ifelse(Pool %in% c(6:10), 'Pools 6-10',
+                    ifelse(Pool %in% c(11:15), 'Pools 11-15',
+                    ifelse(Pool %in% c(16:20), 'Pools 16-20',
+                    ifelse(Pool %in% c(21:25), 'Pools 21-25',
+                    ifelse(Pool %in% c(26:30), 'Pools 26-30',                        ifelse(Pool %in% c(31:36, 'ocean', 'ocean1',
+                    'ocean2'), 'Pools 31-36 & Ocean', 
+                    NA)))))))) %>%
+  filter(!is.na(poolgroup))
+
+
+
+ggplot(data = spring19, 
+       mapping = aes(x = as_factor(Time_point), 
+                     y = Spec_pH_Total_Scale, group = Pool)) + 
+  geom_point(mapping = aes(color = Pool)) + 
+  geom_line (mapping = aes(color = Pool)) +
+  facet_wrap(~Day_night) + 
+  xlab('Time Point') + 
+  ylab('Spec pH') +
+  ggtitle('Spring (March) 2019 Sampling') + 
+  theme_bw() +
+  theme(legend.position = 'bottom') +
+  guides(fill=guide_legend(nrow=2, byrow=TRUE))
+
+
+ggsave('Spring19_DayNight_pH.png', width = 6, height = 6, unit = 'in')
 
 
   
