@@ -398,11 +398,7 @@ remove(calib, calib_date, field_date, Hanna_pH_df, mVTris_t, Tris, adjR2, dates,
 # Clean up environment
   remove(batch, onebatch, specph2, i, r1, r2, r3, specph)
 
-##### QC Spec pH data #####
-  # non-dye samples must be within 0.001 for 3 wavelengths
-  # dye samples must be within 0.005 for 3 wavelenghts
-  
-  # major question - what if 3 samples (a,b,c), and a+b match, b+c match, but not a+C? 
+##### Prep Spec Data for Merge #####
   
   # make key column for sample names
   calcph <- mutate(calcph,
@@ -412,163 +408,17 @@ remove(calib, calib_date, field_date, Hanna_pH_df, mVTris_t, Tris, adjR2, dates,
                    spec_ph_qc_note = NA,
                    replicate = Replicate)
   
-  # make output data frame (key, replicate)
-  qc_list <- calcph[0,]
-  qc_list <- qc_list %>%
-    select(key, replicate = Replicate)
   
-# the following code is used to test the loop
-  # comment out when not developing
-  # qc <- read_csv('wl_qc_testing_06022020.csv')
-  # samplelist <- unique(qc$key) 
-  # qc_list <- select(qc[0,], key, replicate)
-
-# make a list of samples with NAs, 0's and Nans exclude from list
-  excludelist1 <- calcph %>%
-    # filter out samples with pH < 5.4
-    filter(pH_corr < 5.4 | 
-             # or NAs or NaNs
-             is.na(pH_corr) | is.nan(pH_corr)) %>%
-    # get keys that meet criteria
-    group_by(key) %>% 
-    select(key) %>%
-    t %>% c %>% unique
-  
-  # exclude samples with length < 2
-  excludelist2 <- calcph %>%
-    group_by(key) %>% 
-    filter(length(pH_corr) < 2) %>%
-    select(key) %>%
-    t %>% c %>% unique
-  
-  # put together exclude lists, and get unique values
-  excludelist <- unique(c(excludelist1, excludelist2))
-  
-# get list of sample names to loop calculations
-  samplelist <- calcph %>% 
-    filter(!key %in% excludelist) %>%
-    select(key) %>%
-    t %>% c %>% unique
-  
-# trust the wild for loop
-for(i in 1:length(samplelist)){
-  
-  qcdata <- calcph %>%
-    filter(key == samplelist[i]) %>%
-    filter(!is.na(pH_corr)) %>%
-    mutate(replicate = Replicate)
-  
-# Dye - 434 
-  # find abs values of differences b/w replicates
-  combos <- as_tibble(t(combn(qcdata$D_WL434, 2)))
-  rows <- as_tibble(t(combn(qcdata$replicate, 2)))
-  colnames(combos) <- c('r1', 'r2')
-  
-  d434combos <- combos %>%
-    mutate(name = paste(rows$V1, rows$V2),
-           dif = abs(combos$r1 - combos$r2),
-          # label 1 if acceptable dif, 0 if not
-           d434note = ifelse(dif < 0.006, 1, 0))
-  
-# Dye - 730
-  combos <- as_tibble(t(combn(qcdata$D_WL730, 2)))
-  rows <- as_tibble(t(combn(qcdata$replicate, 2)))
-  colnames(combos) <- c('r1', 'r2')
-  
-  d730combos <- combos %>%
-    mutate(name = paste(rows$V1, rows$V2),
-           dif = abs(combos$r1 - combos$r2),
-           d730note = ifelse(dif < 0.006, 1, 0))
-
-# Dye - 578
-  combos <- as_tibble(t(combn(qcdata$D_WL578, 2)))
-  rows <- as_tibble(t(combn(qcdata$replicate, 2)))
-  colnames(combos) <- c('r1', 'r2')
-  
-  d578combos <- combos %>%
-    mutate(name = paste(rows$V1, rows$V2),
-           dif = abs(combos$r1 - combos$r2),
-           d578note = ifelse(dif < 0.006, 1, 0))
-  
-# No Dye - 730
-  combos <- as_tibble(t(combn(qcdata$ND_WL730, 2)))
-  rows <- as_tibble(t(combn(qcdata$replicate, 2)))
-  colnames(combos) <- c('r1', 'r2')
-  
-  nd730combos <- combos %>%
-    mutate(name = paste(rows$V1, rows$V2),
-           dif = abs(combos$r1 - combos$r2),
-           nd730note = ifelse(dif < 0.002, 1, 0))
-
-# No Dye - 578
-  combos <- as_tibble(t(combn(qcdata$ND_WL578, 2)))
-  rows <- as_tibble(t(combn(qcdata$replicate, 2)))
-  colnames(combos) <- c('r1', 'r2')
-  
-  nd578combos <- combos %>%
-    mutate(name = paste(rows$V1, rows$V2),
-           dif = abs(combos$r1 - combos$r2),
-           nd578note = ifelse(dif < 0.002, 1, 0))
-  
-# No Dye - 434
-  combos <- as_tibble(t(combn(qcdata$ND_WL434, 2)))
-  rows <- as_tibble(t(combn(qcdata$replicate, 2)))
-  colnames(combos) <- c('r1', 'r2')
-  
-  nd434combos <- combos %>%
-    mutate(name = paste(rows$V1, rows$V2),
-           dif = abs(combos$r1 - combos$r2),
-           nd434note = ifelse(dif < 0.002, 1, 0))
-
-# put all notes together
-  qc_df <- cbind(nd730combos$nd730note, nd578combos$nd578note,
-                 nd434combos$nd434note, d730combos$d730note,
-                 d578combos$d578note, d434combos$d434note)
-  qc_df <- as_tibble(qc_df)
-  qc_df$replicates <- paste(rows$V1, rows$V2)
-  colnames(qc_df) <- c('nd730', 'nd578', 'nd434', 'd730', 'd578',
-                       'd434', 'replicates')
-  
-# assign final value of good/bad (if one bad, all bad)
-  qc_df$rowsums <- qc_df %>%
-    select(nd730:d434) %>%
-    rowSums()
-  
-  qc_df$goodbad <- ifelse(qc_df$rowsums < 6, 'bad', 'good')
-  
-# get letters from good pairs
-  goodletters <- qc_df %>%
-    # get good replicate pairs
-    filter(goodbad == 'good') %>%
-    # select only replicates column
-    select(replicates) %>%
-    # split into individual letters
-    mutate(r1 = substr(replicates, 1,1),
-           r2 = substr(replicates, 3,3)) %>%
-    select(r1,r2) %>%
-    # get unique entries
-    t %>% c %>% unique
-
-# put back into original data
-  qcdata$goodbad <- ifelse(qcdata$replicate %in% goodletters,'good','bad')
-  
-# get only good/bad and join to list
-  qc_list <- rbind(qc_list, select(qcdata, key, replicate, goodbad))
-  
-}
-  
-# merge w/ original dataset (to retain replicates)
-qc <- left_join(calcph, qc_list, by = c('key', 'replicate'))
+  # merge w/ original dataset (to retain replicates)
+qc <- calcph
 
 # save dataframe
-write_csv(qc, 'qc_phdata_check.csv')
+write_csv(qc, 'phdata_notqc.csv')
 
 ##### Summarize & merge spec pH data with master #####
 # summary data to merge with master (avg ph across acceptable replicates)
 qc1 <- qc %>%
   group_by(key) %>%
-  # get acceptable replicates
-  filter(goodbad == 'good') %>%
   summarize(avg_pH_corr = mean(pH_corr))
 
 # make // key column in master
@@ -583,20 +433,8 @@ master <- left_join(master, qc1, by = 'key')
 # clean environment
 remove(excludelist1, excludelist2, goodletters, i, rows, qcdata, qc_df, nd730combos, nd578combos, nd434combos, d730combos, d578combos, d434combos, combos)
 
-# add notes with telling various situations
-master$Spec_pH_Notes <-  
-  ifelse(master$key %in% excludelist, 
-         'calculated pH value was NA, NaN or 0', 
-  # if 3 samples run, but all rejected...
-  ifelse(master$key %in% samplelist & is.na(master$avg_pH_corr), 
-         'sample run, all 3 replicates rejected',
-  # sample run, at least 3 replicates accepted,
-  ifelse(master$key %in% samplelist, 
-                'sample run & QCed by LP code',
-  # if none of these condition matched, sample not run
-  'sample not run'))) 
 
-remove(qc, qc_list, qc1, excludelist1, excludelist2, samplelist)
+remove(qc, qc1)
 
 ##### Organize master datasheet #####
 master1 <- master %>%
@@ -606,146 +444,8 @@ master1 <- master %>%
   # select columns from master excel sheet
   select("SampleID", "Date", "Time_point", "Pool", 'Time_water_collected', "Temp", 'Hanna_pH', 'Salinity', 'DO', 'Light', 'Field_Notes', 'blank1', 'Hannah_pH_Total_Scale', 'blank2', 'Spec_pH_abs', 'Spec_pH_mV', 'Spec_pH_Total_Scale', 'Spec_pH_Notes', 'blank3', 'TA', 'TA_Corrected', 'TA_Notes', 'blank4', 'Corrected_NN', 'Corrected_Nitrite', 'Corrected_Nitrate', 'Phosphate', 'Ammonium', 'Nutrients_Notes') 
 
-write_csv(master1, 'waterchem_data_complete_06042020.csv')
-
-# make own master to work with (extra columsn for day/night and on/off etc.)
-master2 <- master %>%
-  # make ph columns match master columns
-  mutate(Hannah_pH_Total_Scale = Hanna_pH_calculated,
-         Spec_pH_Total_Scale = avg_pH_corr) %>%
-  # select columns from master excel sheet
-  select("SampleID", "Date", "Time_point", "Pool", 'Day_night', 'Month', 'Year', 'On_Off', 'key', 'Salinity', 'DO', 'Spec_pH_Total_Scale', 'Spec_pH_Notes', 'TA', 'TA_Corrected', 'TA_Notes') 
-
-###### Get list of completed pH and TA samples #####
-# which bottles can be emptied?
-
-# conservative appraoch (no TA or spec pH notes, both present)
-conservative_goodsamples <- master2 %>%
-    filter(Spec_pH_Notes == 'sample run & QCed by LP code' &
-           TA_Notes == 'NA,NA' 
-           & !is.na(Spec_pH_Total_Scale) 
-           & !is.na(TA)) %>%
-    # isolate keys for good samples
-    select(SampleID:key)
-
-# export as csv
-write_csv(conservative_goodsamples, 'conservative_bottles_OK_empty_06042020.csv')
+write_csv(master1, 'waterchem_data_notqc_complete_07022020.csv')
 
 
-# not conservative approach (both present - spec notes filter only)
-not_conservative_goodsamples <- master2 %>%
-  filter(Spec_pH_Notes == 'sample run & QCed by LP code'
-         & !is.na(Spec_pH_Total_Scale) 
-         & !is.na(TA)) %>%
-  # isolate keys for good samples
-  select(SampleID:key)
-
-# export as csv
-write_csv(not_conservative_goodsamples, 'NOT_conservative_bottles_OK_empty_06042020.csv')
-
-##### Plots for pH QC #####
-# make pool an ordered factor
-master2$Pool <- ordered(master2$Pool, levels = c(
-  '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19', '20', '21', '22', '23', '24', '25', '26', '27', '28', '29', '30', '31', '32', '33', '34', '35', '36', 'ocean', 'ocean1', 'ocean2'))
-
-# start with January 2019
-
-jan19 <- master2 %>%
-  filter(Month == 'January' & Year == '2019') %>%
-  select('key', 'Month', 'Year', 'On_Off', 'Time_point', 'Pool',
-         'Day_night', 'Spec_pH_Total_Scale', 'Spec_pH_Notes', 'TA_Corrected', 'TA_Notes') %>%
-  # make pools all #'s (ocean = pool 37, ocean1 = 38, ocean2 =39)
-  mutate(Pool2 = ifelse(Pool %in% c(1:36), Pool,
-                 ifelse(Pool == 'ocean1', 38,
-                 ifelse(Pool == 'ocean2', 39,
-                 ifelse(Pool == 'ocean', 37, NA))))) %>%
-  # add column to wrap by (limit to 5-7 pools/plot)
-  mutate(poolgroup = ifelse(Pool %in% c(1:5), 'Pools 1-5',
-                     ifelse(Pool %in% c(6:10), 'Pools 6-10',
-                     ifelse(Pool %in% c(11:15), 'Pools 11-15',
-                     ifelse(Pool %in% c(16:20), 'Pools 16-20',
-                     ifelse(Pool %in% c(21:25), 'Pools 21-25',
-                     ifelse(Pool %in% c(26:30), 'Pools 26-30',
-                     ifelse(Pool %in% c(31:36, 'ocean', 'ocean1', 'ocean2'), 'Pools 31-36 & Ocean', 
-                            NA)))))))) %>%
-  filter(!is.na(poolgroup))
-
-
-
-ggplot(data = jan19, 
-       mapping = aes(x = as_factor(Time_point), 
-                     y = Spec_pH_Total_Scale, group = Pool)) + 
-  geom_point(mapping = aes(color = Pool)) + 
-  geom_line (mapping = aes(color = Pool)) +
-  facet_wrap(~Day_night) + 
-  xlab('Time Point') + 
-  ylab('Spec pH') +
-  ggtitle('January 2019 Sampling') + 
-  theme_bw() +
-  theme(legend.position = 'bottom') +
-guides(fill=guide_legend(nrow=2, byrow=TRUE))
-
-  ggsave('Jan19_DayNight_pH.png', width = 6, height = 6, unit = 'in')
-  
-  # wrap by pool
-  ggplot(data = jan19,
-         mapping = aes(x = as_factor(Time_point), 
-                       y = Spec_pH_Total_Scale, group = Day_night)) + 
-    geom_point(mapping = aes(color = Day_night)) + 
-    geom_line (mapping = aes(color = Day_night)) +
-    facet_wrap(~Pool) +
-    xlab('Time Point') + 
-    ylab('Spec pH') +
-    ggtitle('January 2019 Sampling') + 
-    theme_bw() +
-    theme(legend.position = 'bottom')
-  ggsave('Jan19_bypool.png', height = 6, width = 6, units = 'in')
-  
-  
-spring19 <- master2 %>%
-  filter(Month == 'March' & Year == '2019') %>%
-  select('key', 'Month', 'Year', 'On_Off', 'Time_point', 'Pool',
-         'Day_night', 'Spec_pH_Total_Scale', 'Spec_pH_Notes', 'TA_Corrected', 'TA_Notes') %>%
-  # make pools all #'s (ocean = pool 37, ocean1 = 38, ocean2 =39)
-  mutate(Pool2 = ifelse(Pool %in% c(1:36), Pool,
-                ifelse(Pool == 'ocean1', 38,
-                ifelse(Pool == 'ocean2', 39,
-                ifelse(Pool == 'ocean', 37, NA)))))
-
-
-
-ggplot(data = spring19, 
-       mapping = aes(x = as_factor(Time_point), 
-                     y = Spec_pH_Total_Scale, group = Pool)) + 
-  geom_point(mapping = aes(color = Pool)) + 
-  geom_line (mapping = aes(color = Pool)) +
-  facet_wrap(~Day_night) + 
-  xlab('Time Point') + 
-  ylab('Spec pH') +
-  ggtitle('Spring (March) 2019 Sampling') + 
-  theme_bw() +
-  theme(legend.position = 'bottom') +
-  guides(fill=guide_legend(nrow=2, byrow=TRUE))
-
-
-ggsave('Spring19_DayNight_pH.png', width = 6, height = 6, unit = 'in')
-
-# wrap by pool
-ggplot(data = spring19,
-       mapping = aes(x = as_factor(Time_point), 
-                     y = Spec_pH_Total_Scale, group = Day_night)) + 
-  geom_point(mapping = aes(color = Day_night)) + 
-  geom_line (mapping = aes(color = Day_night)) +
-  facet_wrap(~Pool) +
-  xlab('Time Point') + 
-  ylab('Spec pH') +
-  ggtitle('Spring (March) 2019 Sampling') + 
-  theme_bw() +
-  theme(legend.position = 'bottom')
-
-ggsave('Spring19_bypool.png', height = 6, width = 6, units = 'in')
-  
-# get sample list for spring 19
-View(spring19)
   
   
